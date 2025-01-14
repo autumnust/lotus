@@ -20,6 +20,7 @@ class SemIndexDataframe:
         if not isinstance(obj, pd.DataFrame):
             raise AttributeError("Must be a DataFrame")
 
+    @operator_cache
     def __call__(self, col_name: str, index_dir: str, static_rm: RM | None = None) -> pd.DataFrame:
         """
         Index a column in the DataFrame.
