@@ -1,6 +1,7 @@
 from pyspark.sql import SparkSession
 from examples.op_examples.openhouse_connector import SparkConnector, OpenHouse
 import pandas as pd
+import os
 
 # Initialize Spark Session
 spark = SparkSession.builder \
@@ -9,14 +10,16 @@ spark = SparkSession.builder \
     .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
     .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog") \
     .config("spark.sql.catalog.spark_catalog.type", "hadoop") \
-    .config("spark.sql.catalog.spark_catalog.warehouse", "$PWD/warehouse") \
+    .config("spark.sql.catalog.spark_catalog.warehouse", f"{os.getcwd()}/warehouse") \
     .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog") \
     .config("spark.sql.catalog.local.type", "hadoop") \
-    .config("spark.sql.catalog.local.warehouse", "$PWD/local/warehouse") \
+    .config("spark.sql.catalog.local.warehouse", f"{os.getcwd()}/local/warehouse") \
     .getOrCreate()
 
 # Create `employees` table in Spark
-spark.sql("CREATE TABLE IF NOT EXISTS local.db.employees (id INT, name STRING, age INT) USING iceberg")
+spark.sql("CREATE DATABASE IF NOT EXISTS db")
+spark.sql("DROP TABLE IF EXISTS db.employees")
+spark.sql("CREATE TABLE IF NOT EXISTS db.employees (id INT, name STRING, age INT) USING iceberg")
 
 # Initialize OpenHouse with SparkConnector
 openhouse = OpenHouse(SparkConnector(spark))
@@ -28,12 +31,19 @@ data = pd.DataFrame({
     "age": [27, 33, 29, 45, 31]
 })
 
+data2 = pd.DataFrame({
+    "id": [6, 7, 8, 9, 10],
+    "name": ["Lisa", "Omar", "Nina", "Peter", "Rachel"],
+    "age": [31, 45, 28, 39, 33]
+})
+
 # trivial example, skip index_cols
 # Note that this thing cannot handle the case where table don't exist.
-openhouse.table("local.db.employees").write(data)
-
+# Insert twice to ensure there's history
+openhouse.table("db.employees").write(data, index_cols=["name"])
+# openhouse.table("db.employees").write(data2)
 # Get the table using OpenHouse
-employees = openhouse.table("local.db.employees")
+employees = openhouse.table("db.employees")
 
 # Demonstrate various operations
 # 1. View first few rows
@@ -41,12 +51,15 @@ print("First 3 rows:")
 print(employees.head(3))
 
 # 2. View last few rows
-print("\nLast 2 rows:")
-print(employees.tail(2))
+print("\nCount:")
+print(employees.count())
 
 # 3. Get basic statistics
 print("\nDescriptive statistics:")
 print(employees.describe())
+
+# Try calling some Iceberg stored procedures
+
 
 # Clean up
 spark.stop()

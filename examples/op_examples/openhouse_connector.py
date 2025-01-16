@@ -53,6 +53,9 @@ class LazyTrinoTable:
     def tail(self, n: int = 5) -> pd.DataFrame:
         return self._ensure_data().tail(n)
     
+    def count(self) -> int:
+        return self._ensure_data().shape[0]
+    
     def describe(self) -> pd.DataFrame:
         return self._ensure_data().describe()
 
@@ -87,7 +90,7 @@ class LazySparkTable:
             return getattr(self._df, name)
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-    def write(self, df: pd.DataFrame,  index_cols: Optional[List[str]] = None, mode: str = "overwrite") -> None:
+    def write(self, df: pd.DataFrame,  index_cols: Optional[List[str]] = None, mode: str = "append") -> None:
         """
         Write a pandas DataFrame to a Spark table.
         
@@ -98,12 +101,16 @@ class LazySparkTable:
             mode: write mode ('overwrite', 'append', 'ignore', or 'error')
         """
         spark_df = self._spark.createDataFrame(df)
-        spark_df.write.mode(mode).saveAsTable(self._table_name)
+        spark_df.write.mode(mode).insertInto(self._table_name)
 
         # Only attempt to update index if index_cols are provided
         if index_cols:
-            # TODO: Call stored procedure to update the index, given table_name + column_names
-            # self._spark.sql(CALL compute_table_embeddings(table_name, column_names))
+            val = self._spark.sql(f"""CALL system.compute_table_embeddings(
+                             table => '{self._table_name}', 
+                             model_name => 'ollama/llama3.1', 
+                             model_inputs => map('x', 'y'), columns => array('{ ','.join(index_cols)}'))""")
+            val.show(truncate=False)
+            a =0
             pass
 
 class OpenHouse:
