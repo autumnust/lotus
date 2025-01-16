@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from examples.op_examples.openhouse_connector import SparkConnector, OpenHouse
+from openhouse_connector import SparkConnector, OpenHouse
 import pandas as pd
 import os
 
@@ -40,10 +40,14 @@ data2 = pd.DataFrame({
 # trivial example, skip index_cols
 # Note that this thing cannot handle the case where table don't exist.
 # Insert twice to ensure there's history
-openhouse.table("db.employees").write(data, index_cols=["name"])
+
+df = openhouse.table("db.employees").write(data, index_cols=["name"])
+outdf = df.sem_search("name", "who's emma", K=2, n_rerank=4)
+print(outdf)
 # openhouse.table("db.employees").write(data2)
 # Get the table using OpenHouse
 employees = openhouse.table("db.employees")
+
 
 # Demonstrate various operations
 # 1. View first few rows

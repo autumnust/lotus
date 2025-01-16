@@ -30,7 +30,7 @@ class IcebergRM(FaissRM):
         all_embeddings = []
         
         embedding_json = json.loads(self.spark.sql(
-            f"CALL local.system.load_table_embeddings( " +
+            f"CALL system.load_table_embeddings( " +
              f"table => '{table_name}')").collect()[0]['embedding_json'])
         
         text_embeddings = dict()

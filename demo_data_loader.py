@@ -1,5 +1,5 @@
-from examples.op_examples.openhouse_connector import OpenHouse
-from examples.op_examples.openhouse_connector import TrinoConnector
+from openhouse_connector import OpenHouse
+from openhouse_connector import TrinoConnector
 from openhouse_config import connection_params
 
 trino_connector = TrinoConnector(connection_params)
