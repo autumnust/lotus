@@ -2,8 +2,8 @@ import os
 import trino
 
 connection_params = {
-    'host': os.getenv('TRINO_HOST', '******.corp.******.com'),
-    'port': int(os.getenv('TRINO_PORT', '***')),
+    'host': os.getenv('TRINO_HOST', 'trino.example.com'),
+    'port': int(os.getenv('TRINO_PORT', '8080')),
     'user': os.getenv('TRINO_USER'),
     'catalog': os.getenv('TRINO_CATALOG', 'openhouse'),
     'http_scheme': os.getenv('TRINO_SCHEME', 'https'),
