@@ -42,6 +42,11 @@ class LazySparkTable:
         df.attrs["index_dirs"][self.index_col] = self.index_dir
         return df
 
+    # add load method, essetially read the table into a pandas dataframe
+    def load(self) -> pd.DataFrame:
+        df = self._df.toPandas()
+        return self._decorate_dataframe(df)
+    
     def head(self, n: int = 5) -> pd.DataFrame:
         df = self._df.limit(n).toPandas()
         return self._decorate_dataframe(df)

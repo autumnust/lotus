@@ -39,9 +39,8 @@ data2 = pd.DataFrame({
 
 table = openhouse.table("db.employees")
 table.write(data, index_cols=["name"])
-employees = table.head(5)
-outdf = employees.sem_search("name", "Who's emma?", K=2, n_rerank=4)
-print(outdf)
+search_df = table.load().sem_search("name", "Who's emma?", K=2, n_rerank=4)
+print(search_df)
 
 # Clean up
 spark.stop()
