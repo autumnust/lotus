@@ -7,6 +7,7 @@ from lotus.models.lm import LM
 from lotus.models.litellm_rm import LiteLLMRM
 import lotus
 from lotus.models import CrossEncoderReranker
+from pyspark.sql.functions import col
 
 
 class DataConnector(ABC):
@@ -15,25 +16,6 @@ class DataConnector(ABC):
         """Returns a table object that supports common DataFrame operations"""
         pass
 
-class TrinoConnector(DataConnector):
-    def __init__(self, connection_params: dict):
-        self._connection_params = connection_params
-        self._connection = None
-
-    def _ensure_connection(self):
-        if self._connection is None:
-            self._connection = trino.dbapi.connect(**self._connection_params)
-
-    def get_table(self, table_name: str) -> 'LazyTrinoTable':
-        return LazyTrinoTable(table_name, self)
-
-    def execute_query(self, query: str) -> pd.DataFrame:
-        self._ensure_connection()
-        cur = self._connection.cursor()
-        cur.execute(query)
-        columns = [desc[0] for desc in cur.description]
-        return pd.DataFrame(cur.fetchall(), columns=columns)
-
 class SparkConnector(DataConnector):
     def __init__(self, spark_session):
         self._spark = spark_session
@@ -41,55 +23,32 @@ class SparkConnector(DataConnector):
     def get_table(self, table_name: str) -> 'LazySparkTable':
         return LazySparkTable(table_name, self._spark)
 
-class LazyTrinoTable:
-    def __init__(self, table_name: str, connector: TrinoConnector):
-        self._table_name = table_name
-        self._connector = connector
-        self._query = f"SELECT * FROM {table_name}"
-        self._df: Optional[pd.DataFrame] = None
-
-    def _ensure_data(self):
-        if self._df is None:
-            self._df = self._connector.execute_query(self._query)
-        return self._df
-
-    def head(self, n: int = 5) -> pd.DataFrame:
-        return self._ensure_data().head(n)
-
-    def tail(self, n: int = 5) -> pd.DataFrame:
-        return self._ensure_data().tail(n)
-    
-    def count(self) -> int:
-        return self._ensure_data().shape[0]
-    
-    def describe(self) -> pd.DataFrame:
-        return self._ensure_data().describe()
-
-    def __getattr__(self, name: str) -> Any:
-        def method(*args, **kwargs):
-            df = self._ensure_data()
-            if hasattr(df, name):
-                return getattr(df, name)(*args, **kwargs)
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
-        return method
-
 class LazySparkTable:
+    from pyspark.sql.functions import col
     def __init__(self, table_name: str, spark):
-        self.index_col = ""
+        self.index_col = None
         self._spark = spark
         self._df = spark.table(table_name)
-        # reconstruct the location for index dir
         self._table_name = table_name
 
+    def _decorate_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Helper function to decorate DataFrame with index information, read method should call this before returning"""
+        df.attrs["index_dirs"] = {}
+
+        assert self.index_col is not None, "index_col must be set before calling read API, check write API"
+        if not hasattr(self, 'index_dir'):
+            self.index_dir = self._spark.sql(f"SHOW TBLPROPERTIES {self._table_name}").filter(col("key") == "index_dir").select("value").collect()[0]["value"]
+
+        df.attrs["index_dirs"][self.index_col] = self.index_dir
+        return df
+
     def head(self, n: int = 5) -> pd.DataFrame:
-        return self._df.limit(n).toPandas()
+        df = self._df.limit(n).toPandas()
+        return self._decorate_dataframe(df)
 
     def tail(self, n: int = 5) -> pd.DataFrame:
         # Note: tail in Spark is expensive, might want to warn users
         return self._df.tail(n)
-
-    # def read(self) -> pd.DataFrame:
-    #     self._df.toPandas()
     
     def describe(self) -> pd.DataFrame:
         return self._df.describe().toPandas()
@@ -112,15 +71,16 @@ class LazySparkTable:
         spark_df = self._spark.createDataFrame(df)
         spark_df.write.mode(mode).insertInto(self._table_name)
 
-        # Only attempt to update index if index_cols are provided
+        # Only support one index column for now
         if index_cols:
             self.index_col = index_cols[0]
             val = self._spark.sql(f"""CALL system.compute_table_embeddings(
                              table => '{self._table_name}', 
                              model_name => 'ollama/llama3.1', 
                              model_inputs => map('x', 'y'), columns => array('{ ','.join(index_cols)}'))""")
-            df = df.sem_index(f"{index_cols[0]}", f"{self._table_name}.{index_cols[0]}", static_rm=IcebergRM(spark=self._spark))
-            return df
+            
+            df.sem_index(f"{ self.index_col}", f"{self._table_name}.{ self.index_col}", static_rm=IcebergRM(spark=self._spark))
+            self._spark.sql(f"ALTER TABLE {self._table_name} SET TBLPROPERTIES ('index_dir' = '{self._table_name}.{ self.index_col}')")
 
 class OpenHouse:
     def __init__(self, connector: DataConnector):

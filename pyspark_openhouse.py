@@ -37,33 +37,11 @@ data2 = pd.DataFrame({
     "age": [31, 45, 28, 39, 33]
 })
 
-# trivial example, skip index_cols
-# Note that this thing cannot handle the case where table don't exist.
-# Insert twice to ensure there's history
-
-df = openhouse.table("db.employees").write(data, index_cols=["name"])
-outdf = df.sem_search("name", "who's emma", K=2, n_rerank=4)
+table = openhouse.table("db.employees")
+table.write(data, index_cols=["name"])
+employees = table.head(5)
+outdf = employees.sem_search("name", "Who's emma?", K=2, n_rerank=4)
 print(outdf)
-# openhouse.table("db.employees").write(data2)
-# Get the table using OpenHouse
-employees = openhouse.table("db.employees")
-
-
-# Demonstrate various operations
-# 1. View first few rows
-print("First 3 rows:")
-print(employees.head(3))
-
-# 2. View last few rows
-print("\nCount:")
-print(employees.count())
-
-# 3. Get basic statistics
-print("\nDescriptive statistics:")
-print(employees.describe())
-
-# Try calling some Iceberg stored procedures
-
 
 # Clean up
 spark.stop()
