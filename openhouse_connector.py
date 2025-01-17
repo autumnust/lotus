@@ -26,7 +26,7 @@ class SparkConnector(DataConnector):
 class LazySparkTable:
     from pyspark.sql.functions import col
     def __init__(self, table_name: str, spark):
-        self.index_col = None
+        self.index_cols = None
         self._spark = spark
         self._df = spark.table(table_name)
         self._table_name = table_name
@@ -35,11 +35,14 @@ class LazySparkTable:
         """Helper function to decorate DataFrame with index information, read method should call this before returning"""
         df.attrs["index_dirs"] = {}
 
-        assert self.index_col is not None, "index_col must be set before calling read API, check write API"
-        if not hasattr(self, 'index_dir'):
-            self.index_dir = self._spark.sql(f"SHOW TBLPROPERTIES {self._table_name}").filter(col("key") == "index_dir").select("value").collect()[0]["value"]
-
-        df.attrs["index_dirs"][self.index_col] = self.index_dir
+        assert self.index_cols is not None, "index_cols must be set before calling read API, check write API"
+        if not hasattr(self, 'index_dirs'):
+            tblprops = self._spark.sql(f"SHOW TBLPROPERTIES {self._table_name}").toPandas()
+            for col in self.index_cols:
+                df.attrs["index_dirs"][col] = tblprops.loc[tblprops['key'] == f'index_dir_{col}', 'value'].values[0]
+            self.index_dirs = df.attrs["index_dirs"]
+        else:
+            df.attrs["index_dirs"][col] = self.index_dirs[col]
         return df
 
     # add load method, essetially read the table into a pandas dataframe
@@ -70,22 +73,22 @@ class LazySparkTable:
         Args:
             df: pandas DataFrame to write
             table_name: name of the target table
-            index_cols: optional list of column names to be used for indexing
+            index_cols: list of column names to be used for indexing
             mode: write mode ('overwrite', 'append', 'ignore', or 'error')
         """
         spark_df = self._spark.createDataFrame(df)
         spark_df.write.mode(mode).insertInto(self._table_name)
 
-        # Only support one index column for now
         if index_cols:
-            self.index_col = index_cols[0]
+            self.index_cols = index_cols
             val = self._spark.sql(f"""CALL system.compute_table_embeddings(
                              table => '{self._table_name}', 
                              model_name => 'ollama/llama3.1', 
-                             model_inputs => map('x', 'y'), columns => array('{ ','.join(index_cols)}'))""")
-            
-            df.sem_index(f"{ self.index_col}", f"{self._table_name}.{ self.index_col}", static_rm=IcebergRM(spark=self._spark))
-            self._spark.sql(f"ALTER TABLE {self._table_name} SET TBLPROPERTIES ('index_dir' = '{self._table_name}.{ self.index_col}')")
+                             model_inputs => map('x', 'y'), 
+                             columns => array({','.join([f"'{col}'" for col in index_cols])}))""")            
+            for col in index_cols:
+                df.sem_index(f"{col}", f"{self._table_name}.{col}", static_rm=IcebergRM(spark=self._spark))
+                self._spark.sql(f"ALTER TABLE {self._table_name} SET TBLPROPERTIES ('index_dir_{col}' = '{self._table_name}.{col}')")
 
 class OpenHouse:
     def __init__(self, connector: DataConnector):

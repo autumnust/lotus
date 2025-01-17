@@ -19,7 +19,7 @@ spark = SparkSession.builder \
 # Create `employees` table in Spark
 spark.sql("CREATE DATABASE IF NOT EXISTS db")
 spark.sql("DROP TABLE IF EXISTS db.employees")
-spark.sql("CREATE TABLE IF NOT EXISTS db.employees (id INT, name STRING, age INT) USING iceberg")
+spark.sql("CREATE TABLE IF NOT EXISTS db.employees (id INT, name STRING, age INT, department STRING) USING iceberg")
 
 # Initialize OpenHouse with SparkConnector
 openhouse = OpenHouse(SparkConnector(spark))
@@ -28,13 +28,15 @@ openhouse = OpenHouse(SparkConnector(spark))
 data = pd.DataFrame({
     "id": [1, 2, 3, 4, 5],
     "name": ["Emma", "Michael", "Sophia", "James", "Olivia"],
-    "age": [27, 33, 29, 45, 31]
+    "age": [27, 33, 29, 45, 31],
+    "department": ["Sales", "Engineering", "Marketing", "Engineering", "Sales"]
 })
 
 data2 = pd.DataFrame({
     "id": [6, 7, 8, 9, 10],
     "name": ["Lisa", "Omar", "Nina", "Peter", "Rachel"],
-    "age": [31, 45, 28, 39, 33]
+    "age": [31, 45, 28, 39, 33],
+    "department": ["Marketing", "Engineering", "Sales", "Marketing", "Engineering"]
 })
 
 table = openhouse.table("db.employees")
